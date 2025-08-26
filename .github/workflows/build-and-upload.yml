@@ -61,10 +61,14 @@ jobs:
       - name: Zip macOS .app
         if: matrix.zipOutput == true
         run: |
-          cd "${{ matrix.outDir }}"
+          set -euo pipefail
+          cd "${{ matrix.outDir }}" # build/StandaloneOSX
           APP_NAME="$(ls -1 | grep '\.app$' | head -n 1)"
-          cd ..
-          /usr/bin/zip -r "${APP_NAME}.zip" "StandaloneOSX/${APP_NAME}"
+          if [ -z "$APP_NAME" ]; then
+            echo "No .app found"; exit 1
+          fi
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP_NAME" "${APP_NAME%.app}.zip"
+          ls -l
         shell: bash
 
       - name: Install butler
@@ -77,9 +81,11 @@ jobs:
 
       - name: Install butler (Windows)
         run: |
-          curl -L -o butler.zip https://broth.itch.ovh/butler/windows-amd64/LATEST/archive/default
-          tar -xf butler.zip -C .
-          ren butler.exe butler\butler.exe
+          $url = "https://broth.itch.ovh/butler/windows-amd64/LATEST/archive/default"
+          Invoke-WebRequest -Uri $url -OutFile butler.zip
+          if (Test-Path .\butler) { Remove-Item .\butler -Recurse -Force }
+          Expand-Archive -Path .\butler.zip -DestinationPath .\butler -Force
+          Get-ChildItem .\butler
         shell: powershell
         if: runner.os == 'Windows'
 
