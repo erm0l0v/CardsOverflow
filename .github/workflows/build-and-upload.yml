@@ -5,59 +5,110 @@ on:
     branches: [ master, main ]
   workflow_dispatch: {}
 
-jobs:
-  build-webgl:
-    name: Build WebGL
-    runs-on: ubuntu-latest
+env:
+  ITCH_USER: overcasthawk
+  ITCH_GAME: cardsoverflow      
 
+jobs:
+  build-and-push:
+    name: Build ${{ matrix.name }} and push
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: WebGL
+            runs-on: ubuntu-latest
+            target: WebGL
+            channel: webgl
+            outDir: build/WebGL
+            zipOutput: false
+
+          - name: Windows
+            runs-on: windows-latest
+            target: StandaloneWindows64
+            channel: windows
+            outDir: build/StandaloneWindows64
+            zipOutput: false
+
+          - name: Linux
+            runs-on: ubuntu-latest
+            target: StandaloneLinux64
+            channel: linux
+            outDir: build/StandaloneLinux64
+            zipOutput: false
+
+          - name: macOS
+            runs-on: macos-latest
+            target: StandaloneOSX
+            channel: mac
+            outDir: build/StandaloneOSX
+            zipOutput: true
+
+    runs-on: ${{ matrix.runs-on }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Cache Library
-        uses: actions/cache@v3
-        with:
-          path: Library
-          key: Library-SkyJam-WebGL
-          restore-keys: |
-            Library-SkyJam-
-            Library-
-
-      - name: Build (GameCI Unity Builder)
-        id: buildStep
+      - name: Build with Unity
         uses: game-ci/unity-builder@v4
+        with:
+          targetPlatform: ${{ matrix.target }}
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-        with:
-          targetPlatform: WebGL
 
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: WebGL
-          path: build/WebGL
+      - name: Zip macOS .app
+        if: matrix.zipOutput == true
+        run: |
+          cd "${{ matrix.outDir }}"
+          APP_NAME="$(ls -1 | grep '\.app$' | head -n 1)"
+          cd ..
+          /usr/bin/zip -r "${APP_NAME}.zip" "StandaloneOSX/${APP_NAME}"
+        shell: bash
 
-  publish-itch:
-    name: Publish to itch.io (webgl channel)
-    needs: build-webgl
-    runs-on: ubuntu-latest
+      - name: Install butler
+        run: |
+          curl -L -o butler.zip https://broth.itch.ovh/butler/linux-amd64/LATEST/archive/default
+          unzip -q butler.zip -d butler
+          chmod +x butler/butler
+        shell: bash
+        if: runner.os == 'Linux'
 
-    steps:
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: WebGL
-          path: WebGL
+      - name: Install butler (Windows)
+        run: |
+          curl -L -o butler.zip https://broth.itch.ovh/butler/windows-amd64/LATEST/archive/default
+          tar -xf butler.zip -C .
+          ren butler.exe butler\butler.exe
+        shell: powershell
+        if: runner.os == 'Windows'
 
-      - name: Setup Butler
-        uses: remarkablegames/setup-butler@v1
+      - name: Install butler (macOS)
+        run: |
+          curl -L -o butler.zip https://broth.itch.ovh/butler/darwin-amd64/LATEST/archive/default
+          unzip -q butler.zip -d butler
+          chmod +x butler/butler
+        shell: bash
+        if: runner.os == 'macOS'
 
       - name: Push to itch.io
         env:
-          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY  }}
         run: |
-          USER_VERSION="${{ steps.buildStep.outputs.buildVersion || '' }}"
-          if [ -z "$USER_VERSION" ]; then USER_VERSION="${GITHUB_SHA::7}"; fi
-          butler push WebGL overcasthawk/cardsoverflow:webgl --userversion "$USER_VERSION"
+          if [ "${{ matrix.zipOutput }}" = "true" ]; then
+            ZIPFILE="$(ls -1 build/StandaloneOSX/*.zip | head -n 1)"
+            ./butler/butler push "$ZIPFILE" "${{ env.ITCH_USER }}/${{ env.ITCH_GAME }}:${{ matrix.channel }}"
+          else
+            ./butler/butler push "${{ matrix.outDir }}" "${{ env.ITCH_USER }}/${{ env.ITCH_GAME }}:${{ matrix.channel }}"
+          fi
+        shell: bash
+        if: runner.os != 'Windows'
+
+      - name: Push to itch.io (Windows)
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY  }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          & .\butler\butler.exe push "${{ matrix.outDir }}" "${{ env.ITCH_USER }}/${{ env.ITCH_GAME }}:${{ matrix.channel }}"
+        shell: powershell
+        if: runner.os == 'Windows'
