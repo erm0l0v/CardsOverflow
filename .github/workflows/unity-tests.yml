@@ -32,7 +32,7 @@ jobs:
 
       - name: Run Unity tests
         id: unity-tests
-        uses: game-ci/unity-test@v4
+        uses: game-ci/unity-test-runner
         with:
           unityVersion: ${{ matrix.unityVersion }}
           testMode: ${{ matrix.testMode }}
