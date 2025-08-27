@@ -1,0 +1,9 @@
+﻿{
+  "name": "Cards",
+  "rootNamespace": "Cards",
+  "includePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "autoReferenced": true,
+  "noEngineReferences": false
+}

@@ -1,0 +1,53 @@
+name: Unity - Tests
+
+on:
+  push:
+    branches: ['**']
+    tags-ignore: ['**']
+  pull_request:
+    branches: ['**'] 
+
+jobs:
+  test:
+    name: ${{ matrix.testMode }} on ${{ matrix.unityVersion }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        testMode: [ editmode, playmode ]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Cache Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-${{ matrix.unityVersion }}-${{ hashFiles('**/*.cs', '**/*.asmdef', 'Packages/manifest.json', 'Packages/packages-lock.json', 'ProjectSettings/ProjectVersion.txt') }}
+          restore-keys: |
+            Library-${{ matrix.unityVersion }}-
+
+      - name: Run Unity tests
+        id: unity-tests
+        uses: game-ci/unity-test@v4
+        with:
+          unityVersion: ${{ matrix.unityVersion }}
+          testMode: ${{ matrix.testMode }}
+          customParameters: -nographics
+          coverageOptions: generateAdditionalMetrics;generateHtmlReport;generateBadgeReport
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+
+      - name: Upload test results & coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.testMode }}-${{ matrix.unityVersion }}
+          path: |
+            ${{ steps.unity-tests.outputs.artifactsPath }}/test-results
+            ${{ steps.unity-tests.outputs.artifactsPath }}/coverage
